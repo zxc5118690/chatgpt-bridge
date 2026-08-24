@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ChatGPT Send-Only Bridge</title>
+    <style>
+      body { font: 15px system-ui; margin: 32px auto; max-width: 640px; padding: 0 20px; }
+      label { display: block; margin: 18px 0 6px; }
+      input { box-sizing: border-box; padding: 10px; width: 100%; }
+      button { margin-top: 18px; padding: 10px 18px; }
+      #status { margin-top: 18px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>ChatGPT Send-Only Bridge</h1>
+    <p>這個 extension 只把 prompt 寫入 ChatGPT，不讀取回答內容。</p>
+    <label for="server-url">Server URL</label>
+    <input id="server-url" value="http://127.0.0.1:8080">
+    <label for="bridge-token">Bridge token</label>
+    <input id="bridge-token" type="password" autocomplete="off">
+    <button id="save" type="button">儲存並連線</button>
+    <div id="status"></div>
+    <script src="options.js"></script>
+  </body>
+</html>
