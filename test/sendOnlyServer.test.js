@@ -76,6 +76,7 @@ test('returns submission acknowledgement but discards every extra extension fiel
     const command = JSON.parse(String(raw));
     assert.equal(command.type, 'prompt.submit');
     assert.equal(command.message, 'create a draft PR');
+    assert.equal(command.newChat, false);
     socket.send(JSON.stringify({
       type: 'prompt.submitted',
       commandId: command.commandId,
@@ -100,6 +101,26 @@ test('returns submission acknowledgement but discards every extra extension fiel
   assert.equal(body.submitted, true);
   assert.equal(body.tabId, 42);
   assert.doesNotMatch(JSON.stringify(body), /forbidden|output|markdown/i);
+  socket.close();
+});
+
+test('passes only an explicit newChat boolean to the extension command', async () => {
+  const bridge = await startBridge();
+  const socket = await connectExtension(bridge);
+  const received = [];
+  socket.on('message', (raw) => {
+    const command = JSON.parse(String(raw));
+    if (command.type !== 'prompt.submit') return;
+    received.push(command);
+    socket.send(JSON.stringify({ type: 'prompt.submitted', commandId: command.commandId, submitted: true, tabId: 88 }));
+  });
+  const response = await fetch(`${bridge.httpUrl}/prompt`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${API_TOKEN}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ message: 'new isolated chat', newChat: true }),
+  });
+  assert.equal(response.status, 202);
+  assert.equal(received[0].newChat, true);
   socket.close();
 });
 

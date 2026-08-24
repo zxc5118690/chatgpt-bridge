@@ -66,6 +66,7 @@ export function createSendOnlyBridge({
 
   app.post('/prompt', async (request, response) => {
     const message = typeof request.body?.message === 'string' ? request.body.message.trim() : '';
+    const newChat = request.body?.newChat === true;
     if (!message) {
       response.status(400).json({ ok: false, error: 'message_required' });
       return;
@@ -89,7 +90,7 @@ export function createSendOnlyBridge({
           reject(new Error('prompt_submission_timeout'));
         }, Math.max(1_000, Number(promptTimeoutMs) || 30_000));
         pending.set(commandId, { resolve, reject, timer, client });
-        client.send(JSON.stringify({ type: 'prompt.submit', commandId, message }));
+        client.send(JSON.stringify({ type: 'prompt.submit', commandId, message, newChat }));
       });
       response.status(202).json({
         ok: true,

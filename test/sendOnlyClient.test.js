@@ -93,6 +93,56 @@ test('send returns only the submission acknowledgement allowlist', async () => {
   socket.close();
 });
 
+test('CLI --new-chat reaches the extension command and preserves the ACK allowlist', async () => {
+  const bridge = await startBridge();
+  let receivedCommand;
+  const socket = await connectExtension(bridge, (raw) => {
+    const command = JSON.parse(String(raw));
+    if (command.type !== 'prompt.submit') return;
+    receivedCommand = command;
+    socket.send(JSON.stringify({ type: 'prompt.submitted', commandId: command.commandId, submitted: true, tabId: 123 }));
+  });
+  const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'send-only-new-chat-'));
+  fs.writeFileSync(path.join(configDir, 'config.json'), JSON.stringify({
+    apiToken: API_TOKEN,
+    bridgeToken: BRIDGE_TOKEN,
+    port: Number(new URL(bridge.httpUrl).port),
+  }), { mode: 0o600 });
+  const previous = process.env.SEND_ONLY_CONFIG_DIR;
+  process.env.SEND_ONLY_CONFIG_DIR = configDir;
+  try {
+    let output = '';
+    const exitCode = await runCli(['send', '--new-chat', '--message', 'isolated prompt'], {
+      stdin: { isTTY: true },
+      stdout: { write: (chunk) => { output += chunk; } },
+      stderr: { write: () => {} },
+    });
+    assert.equal(exitCode, 0);
+    assert.equal(receivedCommand.newChat, true);
+    assert.deepEqual(JSON.parse(output), { ok: true, commandId: receivedCommand.commandId, submitted: true, tabId: 123 });
+  } finally {
+    if (previous === undefined) delete process.env.SEND_ONLY_CONFIG_DIR;
+    else process.env.SEND_ONLY_CONFIG_DIR = previous;
+    socket.close();
+  }
+});
+
+test('CLI rejects repeated --new-chat and a value attached to the boolean flag', async () => {
+  for (const args of [
+    ['send', '--new-chat', '--new-chat', '--message', 'x'],
+    ['send', '--new-chat', 'true', '--message', 'x'],
+  ]) {
+    let errors = '';
+    const exitCode = await runCli(args, {
+      stdin: { isTTY: true },
+      stdout: { write: () => {} },
+      stderr: { write: (chunk) => { errors += chunk; } },
+    });
+    assert.equal(exitCode, 2);
+    assert.equal(JSON.parse(errors).error, 'invalid_arguments');
+  }
+});
+
 test('unreachable server has a stable machine-readable error and exit code', async () => {
   const client = createSendOnlyClient({
     serverUrl: 'http://127.0.0.1:1',

@@ -9,6 +9,7 @@ import { createSendOnlyBridge } from './server.js';
 const HELP = `Usage:
   chatgpt-send health
   chatgpt-send send --file PROMPT.txt
+  chatgpt-send send --new-chat --file PROMPT.txt
   chatgpt-send send --message "prompt text"
   printf "prompt text" | chatgpt-send send
   chatgpt-send serve
@@ -39,10 +40,17 @@ function optionValue(args, name) {
   return args[index + 1];
 }
 
-function validateOptions(args, allowed) {
+function booleanOption(args, name) {
+  const matches = args.filter((value) => value === name);
+  if (matches.length > 1) throw cliError('invalid_arguments', `${name} may only be used once`);
+  return matches.length === 1;
+}
+
+function validateOptions(args, allowedValues, allowedBooleans = []) {
   for (let index = 0; index < args.length; index += 1) {
     const option = args[index];
-    if (!allowed.includes(option)) throw cliError('invalid_arguments', `Unknown option: ${option}`);
+    if (allowedBooleans.includes(option)) continue;
+    if (!allowedValues.includes(option)) throw cliError('invalid_arguments', `Unknown option: ${option}`);
     index += 1;
   }
 }
@@ -96,7 +104,7 @@ export async function runCli(argv, { stdin = process.stdin, stdout = process.std
       return await serve({ stdout });
     }
     if (command === 'health') validateOptions(args, ['--timeout-ms']);
-    else if (command === 'send') validateOptions(args, ['--file', '--message', '--timeout-ms']);
+    else if (command === 'send') validateOptions(args, ['--file', '--message', '--timeout-ms'], ['--new-chat']);
     else throw cliError('invalid_arguments', `Unknown command: ${command}`);
     const timeoutValue = optionValue(args, '--timeout-ms');
     const timeoutMs = timeoutValue === null ? undefined : Number(timeoutValue);
@@ -104,6 +112,7 @@ export async function runCli(argv, { stdin = process.stdin, stdout = process.std
       throw cliError('invalid_arguments', '--timeout-ms must be a number of at least 100');
     }
     const prompt = command === 'send' ? await promptFromArgs(args, stdin) : null;
+    const newChat = command === 'send' && booleanOption(args, '--new-chat');
     const config = readClientConfig();
     const client = createSendOnlyClient({
       ...config,
@@ -114,7 +123,7 @@ export async function runCli(argv, { stdin = process.stdin, stdout = process.std
       return 0;
     }
     if (command === 'send') {
-      jsonLine(stdout, await client.send(prompt));
+      jsonLine(stdout, await client.send(prompt, { newChat }));
       return 0;
     }
   } catch (error) {

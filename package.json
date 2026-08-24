@@ -6,8 +6,8 @@
   "main": "src/send-only/cli.js",
   "scripts": {
     "start": "node src/send-only/cli.js serve",
-    "test": "node --test test/sendOnlyServer.test.js test/sendOnlyExtensionSurface.test.js test/sendOnlyClient.test.js",
-    "check": "node --check src/send-only/server.js && node --check src/send-only/config.js && node --check src/send-only/client.js && node --check src/send-only/cli.js && node --check tools/chrome-send-only-extension/background.js && node --check tools/chrome-send-only-extension/content.js && node --check tools/chrome-send-only-extension/options.js",
+    "test": "node --test test/sendOnlyServer.test.js test/sendOnlyExtensionSurface.test.js test/sendOnlyExtensionPrompt.test.js test/sendOnlyClient.test.js",
+    "check": "node --check src/send-only/server.js && node --check src/send-only/config.js && node --check src/send-only/client.js && node --check src/send-only/cli.js && node --check tools/chrome-send-only-extension/background.js && node --check tools/chrome-send-only-extension/backgroundPrompt.js && node --check tools/chrome-send-only-extension/content.js && node --check tools/chrome-send-only-extension/options.js && npm test",
     "pack:check": "npm pack --dry-run"
   },
   "engines": {

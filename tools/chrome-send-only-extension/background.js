@@ -1,3 +1,5 @@
+import { createPromptHandler } from './backgroundPrompt.js';
+
 const DEFAULT_SERVER_URL = 'http://127.0.0.1:8080';
 const CHATGPT_URLS = ['https://chatgpt.com/*'];
 let socket = null;
@@ -22,22 +24,7 @@ function websocketUrl(serverUrl, bridgeToken) {
   return url.toString();
 }
 
-async function selectChatGptTab() {
-  const tabs = await chrome.tabs.query({ url: CHATGPT_URLS });
-  return tabs.find((tab) => tab.active) || tabs[0] || null;
-}
-
-async function handlePrompt(command) {
-  const tab = await selectChatGptTab();
-  if (!tab?.id) throw new Error('No ChatGPT tab is open');
-  const result = await chrome.tabs.sendMessage(tab.id, {
-    type: 'prompt.submit',
-    commandId: String(command.commandId || ''),
-    message: String(command.message || ''),
-  });
-  if (!result?.submitted) throw new Error(String(result?.error || 'Prompt was not submitted'));
-  return { type: 'prompt.submitted', commandId: command.commandId, submitted: true, tabId: tab.id };
-}
+const handlePrompt = createPromptHandler({ tabs: chrome.tabs, chatGptUrls: CHATGPT_URLS });
 
 async function handleServerMessage(raw) {
   let command;

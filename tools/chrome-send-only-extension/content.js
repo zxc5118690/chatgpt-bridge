@@ -39,26 +39,68 @@ function composerContains(element, message) {
   return Boolean(expected) && normalizedText(composerText(element)).includes(expected);
 }
 
-function setComposerText(element, message) {
-  element.focus();
-  if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') {
-    const prototype = element.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
-    descriptor?.set?.call(element, message);
-  } else {
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    if (!document.execCommand('insertText', false, message)) {
-      range.deleteContents();
-      range.insertNode(document.createTextNode(message));
-    }
-    selection?.removeAllRanges();
-  }
+function dispatchComposerChange(element, message) {
   element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: message }));
   element.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function clearComposer(element) {
+  element.focus();
+  if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') {
+    element.value = '';
+    element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward', data: null }));
+    return;
+  }
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  if (document.execCommand) document.execCommand('delete', false);
+  if (composerText(element)) element.textContent = '';
+  element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward', data: null }));
+}
+
+function setByPaste(element, message) {
+  clearComposer(element);
+  const data = new DataTransfer();
+  data.setData('text/plain', message);
+  element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
+  dispatchComposerChange(element, message);
+}
+
+function setByNativeValue(element, message) {
+  clearComposer(element);
+  if (!(element.tagName === 'TEXTAREA' || element.tagName === 'INPUT')) return;
+  const prototype = element.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+  descriptor?.set?.call(element, message);
+  dispatchComposerChange(element, message);
+}
+
+function setByExecCommand(element, message) {
+  clearComposer(element);
+  if (document.execCommand) document.execCommand('insertText', false, message);
+  dispatchComposerChange(element, message);
+}
+
+function setByTextContent(element, message) {
+  clearComposer(element);
+  if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') element.value = message;
+  else element.textContent = message;
+  dispatchComposerChange(element, message);
+}
+
+async function setComposerText(element, message) {
+  element.focus();
+  await delay(20);
+  const attempts = [setByPaste, setByNativeValue, setByExecCommand, setByTextContent];
+  for (const attempt of attempts) {
+    try { attempt(element, message); } catch {}
+    await delay(80);
+    if (composerContains(element, message)) return;
+  }
+  throw new Error('Prompt text was not accepted by the composer');
 }
 
 function findSendButton(composer) {
@@ -92,9 +134,7 @@ async function submitPrompt(message) {
   if (!text) throw new Error('Prompt is empty');
   if (new TextEncoder().encode(text).length > 64 * 1024) throw new Error('Prompt is too large');
   const composer = await waitForComposer();
-  setComposerText(composer, text);
-  await delay(150);
-  if (!composerContains(composer, text)) throw new Error('Prompt text was not accepted by the composer');
+  await setComposerText(composer, text);
   const sendButton = findSendButton(composer);
   if (sendButton) sendButton.click();
   else {

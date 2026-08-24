@@ -11,6 +11,7 @@ test('extension has a minimal permission and script surface', () => {
   assert.deepEqual(manifest.permissions, ['storage']);
   assert.deepEqual(manifest.content_scripts.flatMap((entry) => entry.js), ['content.js']);
   assert.equal(manifest.background.service_worker, 'background.js');
+  assert.equal(manifest.background.type, 'module');
   assert.equal(manifest.options_page, 'options.html');
 });
 
@@ -34,10 +35,14 @@ test('content runtime contains no assistant-output selectors or recovery surface
   ]) assert.equal(source.includes(forbidden), false, forbidden);
 });
 
-test('contenteditable composer uses the browser editing path', () => {
+test('composer writing uses verified paste, native, execCommand, and textContent strategies', () => {
   const source = fs.readFileSync(path.join(extensionRoot, 'content.js'), 'utf8');
+  assert.match(source, /new DataTransfer\(\)/);
+  assert.match(source, /Object\.getOwnPropertyDescriptor\(prototype, 'value'\)/);
   assert.match(source, /execCommand\('insertText'/);
-  assert.equal(source.includes('element.textContent = message'), false);
+  assert.match(source, /element\.textContent = message/);
+  assert.match(source, /const attempts = \[setByPaste, setByNativeValue, setByExecCommand, setByTextContent\]/);
+  assert.match(source, /if \(composerContains\(element, message\)\) return/);
   assert.match(source, /replace\(\/\\s\+\/g, ' '\)/);
 });
 

@@ -65,13 +65,14 @@ export function createSendOnlyClient({ serverUrl, apiToken, timeoutMs = 35_000, 
       }
       return health;
     },
-    async send(message) {
+    async send(message, { newChat = false } = {}) {
       const text = String(message || '').trim();
       if (!text) throw new SendOnlyClientError('message_required', 'Prompt message is empty', { exitCode: 2 });
       if (Buffer.byteLength(text) > MAX_PROMPT_BYTES) {
         throw new SendOnlyClientError('message_too_large', 'Prompt exceeds 64 KiB', { exitCode: 2 });
       }
-      const body = await request('/prompt', { method: 'POST', body: JSON.stringify({ message: text }) });
+      const payload = newChat === true ? { message: text, newChat: true } : { message: text };
+      const body = await request('/prompt', { method: 'POST', body: JSON.stringify(payload) });
       return Object.freeze({
         ok: body.ok === true,
         commandId: String(body.commandId || ''),
