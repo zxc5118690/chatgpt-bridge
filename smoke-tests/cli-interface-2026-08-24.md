@@ -1,0 +1,1 @@
+ChatGPT Send-Only CLI smoke test passed on 2026-08-24.
