@@ -1,2 +1,4 @@
 #!/usr/bin/env node
-import '../src/send-only/cli.js';
+import { main } from '../src/send-only/cli.js';
+
+process.exitCode = await main();

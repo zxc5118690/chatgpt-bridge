@@ -1,49 +1,136 @@
 #!/usr/bin/env node
-import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
+import { createSendOnlyClient } from './client.js';
+import { loadOrCreateServerConfig, readClientConfig } from './config.js';
 import { createSendOnlyBridge } from './server.js';
 
-const configDir = path.resolve(process.env.SEND_ONLY_CONFIG_DIR || path.join(os.homedir(), '.chatgpt-send-only-bridge'));
-const configPath = path.join(configDir, 'config.json');
+const HELP = `Usage:
+  chatgpt-send health
+  chatgpt-send send --file PROMPT.txt
+  chatgpt-send send --message "prompt text"
+  printf "prompt text" | chatgpt-send send
+  chatgpt-send serve
 
-function strongToken() {
-  return crypto.randomBytes(48).toString('base64url');
+Exit codes: 0 success, 2 config/input, 3 extension disconnected, 4 submission failure.`;
+
+function jsonLine(stream, value) {
+  stream.write(`${JSON.stringify(value)}\n`);
 }
 
-function loadOrCreateConfig() {
-  fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
-  let saved = {};
-  try { saved = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch {}
-  const config = {
-    apiToken: String(process.env.SEND_ONLY_API_TOKEN || saved.apiToken || strongToken()),
-    bridgeToken: String(process.env.SEND_ONLY_BRIDGE_TOKEN || saved.bridgeToken || strongToken()),
-    port: Number(process.env.SEND_ONLY_PORT || saved.port || 8080),
-  };
-  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-  fs.chmodSync(configPath, 0o600);
-  return config;
+function cliError(code, message, exitCode = 2) {
+  return Object.assign(new Error(message), { code, exitCode });
 }
 
-const config = loadOrCreateConfig();
-const bridge = createSendOnlyBridge({
-  ...config,
-  logger(event, details) {
-    console.log(`[send-only] ${event}`, JSON.stringify(details));
-  },
-});
-
-await bridge.listen(config.port);
-console.log(`[send-only] listening on ${bridge.httpUrl}`);
-console.log(`[send-only] config: ${configPath}`);
-console.log('[send-only] assistant output collection is disabled by design');
-
-async function shutdown() {
-  await bridge.close();
-  process.exit(0);
+async function readStdin(stream) {
+  stream.setEncoding('utf8');
+  let text = '';
+  for await (const chunk of stream) text += chunk;
+  return text;
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+function optionValue(args, name) {
+  const matches = args.reduce((indices, value, index) => value === name ? [...indices, index] : indices, []);
+  if (matches.length > 1) throw cliError('invalid_arguments', `${name} may only be used once`);
+  const [index = -1] = matches;
+  if (index < 0) return null;
+  if (!args[index + 1] || args[index + 1].startsWith('--')) throw cliError('invalid_arguments', `${name} requires a value`);
+  return args[index + 1];
+}
+
+function validateOptions(args, allowed) {
+  for (let index = 0; index < args.length; index += 1) {
+    const option = args[index];
+    if (!allowed.includes(option)) throw cliError('invalid_arguments', `Unknown option: ${option}`);
+    index += 1;
+  }
+}
+
+async function promptFromArgs(args, stdin) {
+  const file = optionValue(args, '--file');
+  const message = optionValue(args, '--message');
+  if (file && message) throw cliError('invalid_arguments', 'Use only one of --file or --message');
+  if (file) {
+    try { return fs.readFileSync(file, 'utf8'); }
+    catch { throw cliError('prompt_file_unreadable', `Prompt file is not readable: ${file}`); }
+  }
+  if (message) return message;
+  if (!stdin.isTTY) return readStdin(stdin);
+  throw cliError('message_required', 'Provide --file, --message, or stdin');
+}
+
+async function serve({ stdout }) {
+  const config = loadOrCreateServerConfig();
+  const bridge = createSendOnlyBridge({
+    ...config,
+    logger(event, details) {
+      jsonLine(stdout, { event, ...details });
+    },
+  });
+  try { await bridge.listen(config.port); }
+  catch (error) {
+    if (error?.code === 'EADDRINUSE') throw cliError('bridge_already_running', `Port ${config.port} is already in use`);
+    throw error;
+  }
+  jsonLine(stdout, { ok: true, mode: 'send-only', listening: bridge.httpUrl, configPath: config.configPath });
+
+  async function shutdown() {
+    await bridge.close();
+    process.exit(0);
+  }
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
+  return 0;
+}
+
+export async function runCli(argv, { stdin = process.stdin, stdout = process.stdout, stderr = process.stderr } = {}) {
+  const [command, ...args] = argv;
+  if (!command || command === 'help' || command === '--help' || command === '-h') {
+    stdout.write(`${HELP}\n`);
+    return 0;
+  }
+  try {
+    if (command === 'serve') {
+      validateOptions(args, []);
+      return await serve({ stdout });
+    }
+    if (command === 'health') validateOptions(args, ['--timeout-ms']);
+    else if (command === 'send') validateOptions(args, ['--file', '--message', '--timeout-ms']);
+    else throw cliError('invalid_arguments', `Unknown command: ${command}`);
+    const timeoutValue = optionValue(args, '--timeout-ms');
+    const timeoutMs = timeoutValue === null ? undefined : Number(timeoutValue);
+    if (timeoutValue !== null && (!Number.isFinite(timeoutMs) || timeoutMs < 100)) {
+      throw cliError('invalid_arguments', '--timeout-ms must be a number of at least 100');
+    }
+    const prompt = command === 'send' ? await promptFromArgs(args, stdin) : null;
+    const config = readClientConfig();
+    const client = createSendOnlyClient({
+      ...config,
+      timeoutMs,
+    });
+    if (command === 'health') {
+      jsonLine(stdout, await client.health());
+      return 0;
+    }
+    if (command === 'send') {
+      jsonLine(stdout, await client.send(prompt));
+      return 0;
+    }
+  } catch (error) {
+    jsonLine(stderr, {
+      ok: false,
+      error: String(error.code || 'cli_error'),
+      message: String(error.message || 'Unknown error'),
+    });
+    return Number(error.exitCode) || 4;
+  }
+}
+
+export async function main() {
+  return runCli(process.argv.slice(2));
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.exitCode = await main();
+}
