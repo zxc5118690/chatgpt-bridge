@@ -1,0 +1,1 @@
+Send-only bridge smoke test passed on 2026-08-24.
