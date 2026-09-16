@@ -75,7 +75,7 @@ export function createSendOnlyBridge({
       response.status(413).json({ ok: false, error: 'message_too_large' });
       return;
     }
-    const client = [...clients].find((candidate) => candidate.readyState === candidate.OPEN);
+    const client = [...clients].reverse().find((candidate) => candidate.readyState === candidate.OPEN);
     if (!client) {
       response.status(503).json({ ok: false, error: 'extension_not_connected' });
       return;
