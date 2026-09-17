@@ -1,10 +1,12 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmPJRbVqM3JkXPNAPBMMiG8UD5wcGP8gNOmN3CrIuUZySCN6unJsG6Jo+H3oFeyRUwF/wh8ZFTvRINiVzbKyigf9rvJvXVhZ3HoQs8AqePpIcE1hzVCLEUNO9hiHjwy9QAIL4mQ/ioMM3/ZbfFZdCTixNONUi7jukF+anoKQWkU3repqpFBbjkG5+aOq1+YHl7ww3foQVaB2dKqF23EMKDzYV5HWa22NPWWlZUXTITdeotAtkYUPxTgcRmV6L2P5Nskdre+OxUj8vAF2/peie9sbgiTk48dSt1ACqet5Cgz9Rt2icsQn6ijCcnmCL9w8an4IwE6kLvY4FZddF0/zCgwIDAQAB",
   "name": "ChatGPT Send-Only Bridge",
   "version": "0.1.0",
   "description": "Submits prompts from a loopback bridge without reading ChatGPT output.",
   "permissions": [
-    "storage"
+    "storage",
+    "alarms"
   ],
   "host_permissions": [
     "http://127.0.0.1/*",

@@ -8,7 +8,7 @@ const extensionRoot = path.join(root, 'tools', 'chrome-send-only-extension');
 
 test('extension has a minimal permission and script surface', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(extensionRoot, 'manifest.json'), 'utf8'));
-  assert.deepEqual(manifest.permissions, ['storage']);
+  assert.deepEqual(manifest.permissions, ['storage', 'alarms']);
   assert.deepEqual(manifest.content_scripts.flatMap((entry) => entry.js), ['content.js']);
   assert.equal(manifest.background.service_worker, 'background.js');
   assert.equal(manifest.background.type, 'module');

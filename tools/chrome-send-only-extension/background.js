@@ -79,7 +79,21 @@ async function connect() {
   };
 }
 
-chrome.runtime.onInstalled.addListener(() => void chrome.runtime.openOptionsPage());
+// MV3 service worker 閒置會被回收，socket onclose 的 setTimeout 跟著消失。
+// 用 alarms 當看門狗：worker 每分鐘被叫醒一次，發現沒連線就重連。
+const WATCHDOG_ALARM = 'bridge.watchdog';
+function socketAlive() {
+  return socket !== null && (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN);
+}
+function armWatchdog() {
+  void chrome.alarms.create(WATCHDOG_ALARM, { periodInMinutes: 1 });
+}
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== WATCHDOG_ALARM) return;
+  if (!socketAlive()) void connect();
+});
+chrome.runtime.onStartup.addListener(() => { armWatchdog(); void connect(); });
+chrome.runtime.onInstalled.addListener(() => { armWatchdog(); void chrome.runtime.openOptionsPage(); });
 chrome.runtime.onMessage.addListener((message, _sender, sendReply) => {
   if (message?.type !== 'bridge.reconnect') return false;
   void connect().then(() => sendReply({ ok: true }));
@@ -88,4 +102,5 @@ chrome.runtime.onMessage.addListener((message, _sender, sendReply) => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes.serverUrl || changes.bridgeToken)) void connect();
 });
+armWatchdog();
 void connect();
